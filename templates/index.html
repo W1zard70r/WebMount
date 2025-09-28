@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Disk Manager</title>
+    <style>
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid black; padding: 8px; text-align: left; }
+    </style>
+</head>
+<body>
+    <h1>Disk Manager for VM</h1>
+    <table>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Size</th>
+                <th>Mountpoint</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for disk in disks %}
+            <tr>
+                <td>{{ disk.name }}</td>
+                <td>{{ disk.size }}</td>
+                <td>{{ disk.mountpoint }}</td>
+                <td>
+                    <form action="/mount" method="post" style="display:inline;">
+                        <input type="hidden" name="device" value="{{ disk.name }}">
+                        <input type="text" name="mount_point" placeholder="/mnt/point" required>
+                        <button type="submit">Mount</button>
+                    </form>
+                    <form action="/unmount" method="post" style="display:inline;">
+                        <input type="hidden" name="mount_point" value="{{ disk.mountpoint }}">
+                        <button type="submit" {% if not disk.mountpoint %}disabled{% endif %}>Unmount</button>
+                    </form>
+                    <form action="/format" method="post" style="display:inline;">
+                        <input type="hidden" name="device" value="{{ disk.name }}">
+                        <button type="submit" onclick="return confirm('Are you sure? This will erase data!');">Format</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</body>
+</html>
