@@ -18,7 +18,7 @@ async def get_disks():
         ).stdout.strip()
         disks = []
 
-        for line in output.splitlines()[1:]:  # Пропустить заголовок
+        for line in output.splitlines()[1:]:
             if line.strip():
                 parts = line.split(maxsplit=3)
                 name = parts[0]
@@ -27,7 +27,6 @@ async def get_disks():
                 dev_type = parts[-1]
                 if dev_type == "disk":
                     disks.append({"name": name, "size": size, "mountpoint": mountpoint})
-                # Игнорируем разделы и loop-устройства
         return disks
     except subprocess.CalledProcessError as e:
         print(f"Ошибка выполнения lsblk: {e}")
@@ -46,7 +45,6 @@ async def mount_disk(device: str = Form(...), mount_point: str = Form(...)):
     try:
         if not os.path.exists(mount_point):
             os.makedirs(mount_point)
-        # Проверяем, есть ли файловая система на диске
         output = subprocess.run(
             ["lsblk", "-o", "FSTYPE", "-n", device],
             capture_output=True,
@@ -65,7 +63,6 @@ async def mount_disk(device: str = Form(...), mount_point: str = Form(...)):
 @app.delete("/unmount")
 async def unmount_disk(device: str = Form(...)):
     try:
-        # Проверяем, смонтирован ли сам диск или его разделы
         output = subprocess.run(
             ["lsblk", "-o", "NAME,MOUNTPOINT", "-l", "-p", device],
             capture_output=True,
@@ -73,11 +70,12 @@ async def unmount_disk(device: str = Form(...)):
             check=True
         ).stdout.strip()
         mount_points = []
-        for line in output.splitlines():
+        for line in output.splitlines()[1:]:
             if line.strip():
                 parts = line.split(maxsplit=1)
                 if len(parts) == 2 and parts[1]:
                     mount_points.append(parts[1])
+        print(mount_points)
         if not mount_points:
             raise ValueError("Диск или его разделы не смонтированы")
         for mount_point in mount_points:
@@ -91,18 +89,17 @@ async def unmount_disk(device: str = Form(...)):
 @app.post("/format")
 async def format_disk(device: str = Form(...), filesystem: str = Form("ext4")):
     try:
-        # Защищаем системный диск
         system_disks = ["/dev/nvme0n1"]
         if device in system_disks:
             raise ValueError("Нельзя форматировать системный диск")
-        # Проверяем, смонтированы ли диск или его разделы
         output = subprocess.run(
             ["lsblk", "-o", "NAME,MOUNTPOINT", "-l", "-p", device],
             capture_output=True,
             text=True,
             check=True
         ).stdout.strip()
-        for line in output.splitlines():
+        # print(output.splitlines()[1:])
+        for line in output.splitlines()[1:]:
             if line.strip():
                 parts = line.split(maxsplit=1)
                 if len(parts) == 2 and parts[1]:
