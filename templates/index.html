@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Disk Manager</title>
+    <title>Управление дисками</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         .btn {
@@ -28,43 +28,43 @@
 </head>
 <body class="bg-gray-100 font-sans">
     <div class="container mx-auto p-6">
-        <h1 class="text-3xl font-bold text-gray-800 mb-6">Disk Manager</h1>
+        <h1 class="text-3xl font-bold text-gray-800 mb-6">Управление дисками</h1>
         <div class="bg-white shadow-md rounded-lg p-6">
             {% for disk in disks %}
-                <div class="mb-4">
-                    <h2 class="text-xl font-semibold text-gray-700">disk {{ disk.name }}</h2>
-                    <ul class="ml-4 mt-2">
-                        {% for partition in disk.partitions %}
-                            <li class="mb-2 flex items-center justify-between">
-                                <span class="text-gray-600">
-                                    part{{ loop.index }} {{ partition.name }}{% if partition.mountpoint %} ({{ partition.mountpoint }}){% endif %}
-                                </span>
-                                <div class="flex space-x-2">
-                                    <!-- Mount Button -->
-                                    <form action="/mount" method="post" class="mount-form" data-partition="{{ partition.name }}">
-                                        <input type="hidden" name="device" value="{{ partition.name }}">
-                                        <input type="text" name="mount_point" value="/mnt/{{ partition.name | replace('/dev/', '') }}" class="border rounded px-2 py-1 text-sm w-48 mr-2" placeholder="Mount point">
-                                        <button type="submit" class="btn bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Mount</button>
-                                    </form>
-                                    <!-- Unmount Button -->
-                                    <form action="/unmount" method="post" class="unmount-form" data-partition="{{ partition.name }}">
-                                        <input type="hidden" name="mount_point" value="{{ partition.mountpoint or '' }}">
-                                        <button type="submit" class="btn bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600 {% if not partition.mountpoint %}opacity-50 cursor-not-allowed{% endif %}" {% if not partition.mountpoint %}disabled{% endif %}>Unmount</button>
-                                    </form>
-                                    <!-- Format Button -->
-                                    <form action="/format" method="post" class="format-form" data-partition="{{ partition.name }}">
-                                        <input type="hidden" name="device" value="{{ partition.name }}">
-                                        <input type="hidden" name="filesystem" value="ext4">
-                                        <button type="submit" class="btn bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600" onclick="return confirm('Are you sure you want to format {{ partition.name }}? This will erase all data!')">Format</button>
-                                    </form>
-                                </div>
-                                <div class="message-container" data-partition="{{ partition.name }}">
-                                    <span class="success-message"></span>
-                                    <span class="error-message"></span>
-                                </div>
-                            </li>
-                        {% endfor %}
-                    </ul>
+                <div class="mb-4 flex items-center justify-between">
+                    <div>
+                        <h2 class="text-xl font-semibold text-gray-700">диск {{ disk.name }} ({{ disk.size }})</h2>
+                        {% if disk.mountpoint %}
+                            <p class="text-gray-600">Точка монтирования: {{ disk.mountpoint }}</p>
+                        {% endif %}
+                    </div>
+                    <div class="flex space-x-2">
+                        <!-- Кнопка монтирования -->
+                        <form action="/mount" method="post" class="mount-form" data-disk="{{ disk.name }}">
+                            <input type="hidden" name="device" value="{{ disk.name }}">
+                            <input type="text" name="mount_point" value="/mnt/{{ disk.name | replace('/dev/', '') }}" class="border rounded px-2 py-1 text-sm w-48 mr-2" placeholder="Точка монтирования">
+                            <button type="submit" class="btn bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Монтировать</button>
+                        </form>
+                        <!-- Кнопка размонтирования -->
+                        <form action="/unmount" method="post" class="unmount-form" data-disk="{{ disk.name }}">
+                            <input type="hidden" name="device" value="{{ disk.name }}">
+                            <button type="submit" class="btn bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600 {% if not disk.mountpoint %}opacity-50 cursor-not-allowed{% endif %}" {% if not disk.mountpoint %}disabled{% endif %}>Размонтировать</button>
+                        </form>
+                        <!-- Кнопка форматирования -->
+                        <form action="/format" method="post" class="format-form" data-disk="{{ disk.name }}">
+                            <input type="hidden" name="device" value="{{ disk.name }}">
+                            <select name="filesystem" class="border rounded px-2 py-1 text-sm mr-2">
+                                <option value="ext4">ext4</option>
+                                <option value="vfat">vfat</option>
+                                <option value="ntfs">ntfs</option>
+                            </select>
+                            <button type="submit" class="btn bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600" onclick="return confirm('Вы уверены, что хотите отформатировать {{ disk.name }}? Все данные и разделы будут удалены!')">Форматировать</button>
+                        </form>
+                    </div>
+                    <div class="message-container" data-disk="{{ disk.name }}">
+                        <span class="success-message"></span>
+                        <span class="error-message"></span>
+                    </div>
                 </div>
             {% endfor %}
         </div>
@@ -74,16 +74,16 @@
             form.addEventListener('submit', async (e) => {
                 e.preventDefault();
                 const formData = new FormData(form);
-                const partition = form.getAttribute('data-partition');
-                const messageContainer = document.querySelector(`.message-container[data-partition="${partition}"]`);
+                const disk = form.getAttribute('data-disk');
+                const messageContainer = document.querySelector(`.message-container[data-disk="${disk}"]`);
                 const successMessage = messageContainer.querySelector('.success-message');
                 const errorMessage = messageContainer.querySelector('.error-message');
 
-                // Hide previous messages
+                // Скрыть предыдущие сообщения
                 successMessage.style.display = 'none';
                 errorMessage.style.display = 'none';
 
-                // Determine method and URL
+                // Определить метод и URL
                 const method = form.classList.contains('unmount-form') ? 'DELETE' : 'POST';
                 const url = form.action;
 
@@ -97,14 +97,14 @@
                     if (result.status === 'success') {
                         successMessage.textContent = result.message;
                         successMessage.style.display = 'block';
-                        // Refresh the page after a short delay to update mountpoints
+                        // Обновить страницу после успешного действия
                         setTimeout(() => location.reload(), 1000);
                     } else {
                         errorMessage.textContent = result.message;
                         errorMessage.style.display = 'block';
                     }
                 } catch (error) {
-                    errorMessage.textContent = 'Network error: ' + error.message;
+                    errorMessage.textContent = 'Ошибка сети: ' + error.message;
                     errorMessage.style.display = 'block';
                 }
             });
