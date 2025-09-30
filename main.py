@@ -44,26 +44,19 @@ async def root(request: Request):
 @app.post("/mount")
 async def mount_disk(device: str = Form(...), mount_point: str = Form(...)):
     try:
-        # Проверяем, есть ли разделы у диска
+        if not os.path.exists(mount_point):
+            os.makedirs(mount_point)
+        # Проверяем, есть ли файловая система на диске
         output = subprocess.run(
-            ["lsblk", "-o", "NAME,TYPE", "-l", "-p", device],
+            ["lsblk", "-o", "FSTYPE", "-n", device],
             capture_output=True,
             text=True,
             check=True
         ).stdout.strip()
-        first_partition = None
-        for line in output.splitlines()[1:]:
-            if line.strip():
-                parts = line.split()
-                if len(parts) >= 2 and parts[1] == "part":
-                    first_partition = parts[0]
-                    break
-        if not first_partition:
-            raise ValueError("У диска нет разделов для монтирования")
-        if not os.path.exists(mount_point):
-            os.makedirs(mount_point)
-        subprocess.run(["sudo", "mount", first_partition, mount_point], check=True)
-        return {"status": "success", "message": f"Раздел {first_partition} смонтирован в {mount_point}"}
+        if not output:
+            raise ValueError("На диске отсутствует файловая система. Сначала отформатируйте диск.")
+        subprocess.run(["sudo", "mount", device, mount_point], check=True)
+        return {"status": "success", "message": f"Диск {device} смонтирован в {mount_point}"}
     except subprocess.CalledProcessError as e:
         return {"status": "error", "message": f"Ошибка монтирования: {e.stderr or str(e)}"}
     except ValueError as e:
@@ -72,7 +65,7 @@ async def mount_disk(device: str = Form(...), mount_point: str = Form(...)):
 @app.delete("/unmount")
 async def unmount_disk(device: str = Form(...)):
     try:
-        # Находим все точки монтирования для разделов диска
+        # Проверяем, смонтирован ли сам диск или его разделы
         output = subprocess.run(
             ["lsblk", "-o", "NAME,MOUNTPOINT", "-l", "-p", device],
             capture_output=True,
@@ -80,16 +73,16 @@ async def unmount_disk(device: str = Form(...)):
             check=True
         ).stdout.strip()
         mount_points = []
-        for line in output.splitlines()[1:]:
+        for line in output.splitlines():
             if line.strip():
                 parts = line.split(maxsplit=1)
                 if len(parts) == 2 and parts[1]:
                     mount_points.append(parts[1])
         if not mount_points:
-            raise ValueError("У диска нет смонтированных разделов")
+            raise ValueError("Диск или его разделы не смонтированы")
         for mount_point in mount_points:
             subprocess.run(["sudo", "umount", mount_point], check=True)
-        return {"status": "success", "message": f"Все разделы диска {device} размонтированы"}
+        return {"status": "success", "message": f"Диск {device} и его разделы размонтированы"}
     except subprocess.CalledProcessError as e:
         return {"status": "error", "message": f"Ошибка размонтирования: {e.stderr or str(e)}"}
     except ValueError as e:
@@ -102,18 +95,18 @@ async def format_disk(device: str = Form(...), filesystem: str = Form("ext4")):
         system_disks = ["/dev/nvme0n1"]
         if device in system_disks:
             raise ValueError("Нельзя форматировать системный диск")
-        # Проверяем, смонтированы ли какие-либо разделы диска
+        # Проверяем, смонтированы ли диск или его разделы
         output = subprocess.run(
             ["lsblk", "-o", "NAME,MOUNTPOINT", "-l", "-p", device],
             capture_output=True,
             text=True,
             check=True
         ).stdout.strip()
-        for line in output.splitlines()[1:]:
+        for line in output.splitlines():
             if line.strip():
                 parts = line.split(maxsplit=1)
                 if len(parts) == 2 and parts[1]:
-                    raise ValueError(f"Раздел {parts[0]} смонтирован в {parts[1]}")
+                    raise ValueError(f"Диск или его раздел {parts[0]} смонтирован в {parts[1]}")
         subprocess.run(["sudo", "mkfs", "-t", filesystem, device], check=True)
         return {"status": "success", "message": f"Диск {device} отформатирован как {filesystem}"}
     except subprocess.CalledProcessError as e:
