@@ -1,47 +1,114 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Disk Manager</title>
+    <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        table { border-collapse: collapse; width: 100%; }
-        th, td { border: 1px solid black; padding: 8px; text-align: left; }
+        .btn {
+            transition: all 0.2s ease-in-out;
+        }
+        .btn:hover {
+            transform: scale(1.05);
+        }
+        .error-message {
+            display: none;
+            color: red;
+            font-size: 0.875rem;
+            margin-top: 0.25rem;
+        }
+        .success-message {
+            display: none;
+            color: green;
+            font-size: 0.875rem;
+            margin-top: 0.25rem;
+        }
     </style>
 </head>
-<body>
-    <h1>Disk Manager for VM</h1>
-    <table>
-        <thead>
-            <tr>
-                <th>Name</th>
-                <th>Size</th>
-                <th>Mountpoint</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody>
+<body class="bg-gray-100 font-sans">
+    <div class="container mx-auto p-6">
+        <h1 class="text-3xl font-bold text-gray-800 mb-6">Disk Manager</h1>
+        <div class="bg-white shadow-md rounded-lg p-6">
             {% for disk in disks %}
-            <tr>
-                <td>{{ disk.name }}</td>
-                <td>{{ disk.size }}</td>
-                <td>{{ disk.mountpoint }}</td>
-                <td>
-                    <form action="/mount" method="post" style="display:inline;">
-                        <input type="hidden" name="device" value="{{ disk.name }}">
-                        <input type="text" name="mount_point" placeholder="/mnt/point" required>
-                        <button type="submit">Mount</button>
-                    </form>
-                    <form action="/unmount" method="post" style="display:inline;">
-                        <input type="hidden" name="mount_point" value="{{ disk.mountpoint }}">
-                        <button type="submit" {% if not disk.mountpoint %}disabled{% endif %}>Unmount</button>
-                    </form>
-                    <form action="/format" method="post" style="display:inline;">
-                        <input type="hidden" name="device" value="{{ disk.name }}">
-                        <button type="submit" onclick="return confirm('Are you sure? This will erase data!');">Format</button>
-                    </form>
-                </td>
-            </tr>
+                <div class="mb-4">
+                    <h2 class="text-xl font-semibold text-gray-700">disk {{ disk.name }}</h2>
+                    <ul class="ml-4 mt-2">
+                        {% for partition in disk.partitions %}
+                            <li class="mb-2 flex items-center justify-between">
+                                <span class="text-gray-600">
+                                    part{{ loop.index }} {{ partition.name }}{% if partition.mountpoint %} ({{ partition.mountpoint }}){% endif %}
+                                </span>
+                                <div class="flex space-x-2">
+                                    <!-- Mount Button -->
+                                    <form action="/mount" method="post" class="mount-form" data-partition="{{ partition.name }}">
+                                        <input type="hidden" name="device" value="{{ partition.name }}">
+                                        <input type="text" name="mount_point" value="/mnt/{{ partition.name | replace('/dev/', '') }}" class="border rounded px-2 py-1 text-sm w-48 mr-2" placeholder="Mount point">
+                                        <button type="submit" class="btn bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Mount</button>
+                                    </form>
+                                    <!-- Unmount Button -->
+                                    <form action="/unmount" method="post" class="unmount-form" data-partition="{{ partition.name }}">
+                                        <input type="hidden" name="mount_point" value="{{ partition.mountpoint or '' }}">
+                                        <button type="submit" class="btn bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600 {% if not partition.mountpoint %}opacity-50 cursor-not-allowed{% endif %}" {% if not partition.mountpoint %}disabled{% endif %}>Unmount</button>
+                                    </form>
+                                    <!-- Format Button -->
+                                    <form action="/format" method="post" class="format-form" data-partition="{{ partition.name }}">
+                                        <input type="hidden" name="device" value="{{ partition.name }}">
+                                        <input type="hidden" name="filesystem" value="ext4">
+                                        <button type="submit" class="btn bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600" onclick="return confirm('Are you sure you want to format {{ partition.name }}? This will erase all data!')">Format</button>
+                                    </form>
+                                </div>
+                                <div class="message-container" data-partition="{{ partition.name }}">
+                                    <span class="success-message"></span>
+                                    <span class="error-message"></span>
+                                </div>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                </div>
             {% endfor %}
-        </tbody>
-    </table>
+        </div>
+    </div>
+    <script>
+        document.querySelectorAll('.mount-form, .unmount-form, .format-form').forEach(form => {
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const formData = new FormData(form);
+                const partition = form.getAttribute('data-partition');
+                const messageContainer = document.querySelector(`.message-container[data-partition="${partition}"]`);
+                const successMessage = messageContainer.querySelector('.success-message');
+                const errorMessage = messageContainer.querySelector('.error-message');
+
+                // Hide previous messages
+                successMessage.style.display = 'none';
+                errorMessage.style.display = 'none';
+
+                // Determine method and URL
+                const method = form.classList.contains('unmount-form') ? 'DELETE' : 'POST';
+                const url = form.action;
+
+                try {
+                    const response = await fetch(url, {
+                        method: method,
+                        body: formData
+                    });
+                    const result = await response.json();
+
+                    if (result.status === 'success') {
+                        successMessage.textContent = result.message;
+                        successMessage.style.display = 'block';
+                        // Refresh the page after a short delay to update mountpoints
+                        setTimeout(() => location.reload(), 1000);
+                    } else {
+                        errorMessage.textContent = result.message;
+                        errorMessage.style.display = 'block';
+                    }
+                } catch (error) {
+                    errorMessage.textContent = 'Network error: ' + error.message;
+                    errorMessage.style.display = 'block';
+                }
+            });
+        });
+    </script>
 </body>
 </html>
